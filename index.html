@@ -2,8 +2,8 @@
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Merge images</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>圖片合併工具</title>
   <style>
     * {
       box-sizing: border-box;
@@ -12,7 +12,7 @@
     }
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      padding: 24px;
+      padding: 16px;
       background-color: #f5f5f7;
       color: #333;
     }
@@ -20,22 +20,20 @@
       max-width: 900px;
       margin: 0 auto;
       background: #ffffff;
-      padding: 24px;
+      padding: 20px;
       border-radius: 12px;
       box-shadow: 0 4px 12px rgba(0,0,0,0.08);
     }
     h1 {
-      font-size: 1.5rem;
-      margin-bottom: 20px;
+      font-size: 1.3rem;
+      margin-bottom: 16px;
       text-align: center;
       color: #1d1d1f;
     }
     .controls {
       display: flex;
-      flex-wrap: wrap;
-      gap: 16px;
-      align-items: center;
-      justify-content: space-between;
+      flex-direction: column;
+      gap: 12px;
       margin-bottom: 20px;
       padding: 16px;
       background: #fafafa;
@@ -44,77 +42,85 @@
     }
     .control-group {
       display: flex;
-      align-items: center;
-      gap: 12px;
+      flex-direction: column;
+      gap: 6px;
     }
     label {
       font-weight: 600;
-      font-size: 0.95rem;
-    }
-    input[type="file"] {
       font-size: 0.9rem;
     }
-    select, button {
-      padding: 8px 16px;
+    input[type="file"], select, button {
+      width: 100%;
+      padding: 10px;
       font-size: 0.95rem;
       border-radius: 6px;
       border: 1px solid #ccc;
       background-color: #fff;
-      cursor: pointer;
-      transition: all 0.2s ease;
     }
     button {
       background-color: #0071e3;
       color: #fff;
       border: none;
-      font-weight: 500;
-    }
-    button:hover {
-      background-color: #0077ed;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 6px;
     }
     button:disabled {
       background-color: #a1a1a6;
       cursor: not-allowed;
     }
     .preview-section {
-      margin-top: 20px;
+      margin-top: 16px;
       text-align: center;
     }
     .preview-title {
       font-weight: 600;
-      margin-bottom: 12px;
+      margin-bottom: 8px;
       text-align: left;
     }
     .preview-container {
       max-width: 100%;
       overflow: auto;
       background: #e5e5e5;
-      padding: 16px;
+      padding: 12px;
       border-radius: 8px;
-      min-height: 200px;
+      min-height: 150px;
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
     }
     canvas {
+      display: none;
+    }
+    /* 專門用來在手機顯示與長按儲存的 img 標籤 */
+    #resultImg {
       max-width: 100%;
       height: auto;
       box-shadow: 0 2px 8px rgba(0,0,0,0.15);
       background-color: #fff;
+      display: none;
+    }
+    .tip-text {
+      font-size: 0.85rem;
+      color: #86868b;
+      margin-top: 8px;
+      display: none;
     }
     .download-btn {
-      margin-top: 16px;
+      margin-top: 12px;
       background-color: #34c759;
-    }
-    .download-btn:hover {
-      background-color: #30d158;
+      text-decoration: none;
+      display: inline-block;
+      text-align: center;
+      line-height: 24px;
     }
   </style>
 </head>
 <body>
 
 <div class="container">
-  <h1>Merge images</h1>
+  <h1>圖片拼接與自動縮放工具</h1>
 
   <div class="controls">
     <div class="control-group">
@@ -136,10 +142,12 @@
   <div class="preview-section">
     <div class="preview-title">預覽結果：</div>
     <div class="preview-container">
-      <canvas id="canvas" style="display: none;"></canvas>
+      <canvas id="canvas"></canvas>
+      <img id="resultImg" alt="合併後的圖片">
       <span id="placeholderText">請上傳兩張以上的圖片</span>
     </div>
-    <button id="downloadBtn" class="download-btn" style="display: none;">下載合併圖片</button>
+    <div id="tipText" class="tip-text">💡 小提示：若按鈕無法下載，可直接「長按上方圖片」選取儲存。</div>
+    <button id="downloadBtn" class="download-btn" style="display: none;">儲存 / 下載圖片</button>
   </div>
 </div>
 
@@ -149,7 +157,9 @@
   const mergeBtn = document.getElementById('mergeBtn');
   const downloadBtn = document.getElementById('downloadBtn');
   const canvas = document.getElementById('canvas');
+  const resultImg = document.getElementById('resultImg');
   const placeholderText = document.getElementById('placeholderText');
+  const tipText = document.getElementById('tipText');
   const ctx = canvas.getContext('2d');
 
   let loadedImages = [];
@@ -190,7 +200,6 @@
     const direction = directionSelect.value;
 
     if (direction === 'horizontal') {
-      // 水平合併：找出最小高度，將所有圖片依比例縮放到該高度
       const minHeight = Math.min(...loadedImages.map(img => img.naturalHeight));
 
       const scaledImages = loadedImages.map(img => {
@@ -214,7 +223,6 @@
       });
 
     } else {
-      // 垂直合併：找出最小寬度，將所有圖片依比例縮放到該寬度
       const minWidth = Math.min(...loadedImages.map(img => img.naturalWidth));
 
       const scaledImages = loadedImages.map(img => {
@@ -238,17 +246,42 @@
       });
     }
 
-    // 顯示繪製結果與下載按鈕
+    // 將 Canvas 轉換為圖片 Base64 並賦予 <img> 標籤
+    const dataUrl = canvas.toDataURL('image/png');
+    resultImg.src = dataUrl;
+
+    // 顯示圖片與下載提示
     placeholderText.style.display = 'none';
-    canvas.style.display = 'block';
-    downloadBtn.style.display = 'inline-block';
+    resultImg.style.display = 'block';
+    tipText.style.display = 'block';
+    downloadBtn.style.display = 'block';
   }
 
+  // 針對手機處理儲存邏輯
   downloadBtn.addEventListener('click', () => {
+    const dataUrl = resultImg.src;
+    
+    // 試圖進行標準下載
     const link = document.createElement('a');
     link.download = 'merged_image.png';
-    link.href = canvas.toDataURL('image/png');
-    link.click();
+    link.href = dataUrl;
+    
+    // 判斷是否在內建瀏覽器（如 LINE/FB），或開啟新頁面供儲存
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    
+    if (isMobile) {
+      // 手機端：開起新視窗/分頁顯示圖檔，方便長按儲存
+      const newWin = window.open();
+      if (newWin) {
+        newWin.document.write(`<img src="${dataUrl}" style="max-width:100%; height:auto;" /><p style="font-size:14px;color:#666;">長按圖片即可儲存至手機</p>`);
+      } else {
+        // 若被阻擋彈出視窗，引導用戶直接長按頁面上輸出的圖片
+        alert('請直接「長按」畫面中央合併好的圖片，選擇「儲存圖片」或「加入照片」！');
+      }
+    } else {
+      // 電腦端標準下載
+      link.click();
+    }
   });
 </script>
 
