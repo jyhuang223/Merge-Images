@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>圖片合併工具</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      padding: 16px;
+      background-color: #f5f5f7;
+      color: #333;
+    }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      background: #ffffff;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    }
+    h1 {
+      font-size: 1.3rem;
+      margin-bottom: 16px;
+      text-align: center;
+      color: #1d1d1f;
+    }
+    .controls {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-bottom: 20px;
+      padding: 16px;
+      background: #fafafa;
+      border-radius: 8px;
+      border: 1px solid #e5e5e5;
+    }
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    label {
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+    input[type="file"], select, button {
+      width: 100%;
+      padding: 10px;
+      font-size: 0.95rem;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      background-color: #fff;
+    }
+    button {
+      background-color: #0071e3;
+      color: #fff;
+      border: none;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 6px;
+    }
+    button:disabled {
+      background-color: #a1a1a6;
+      cursor: not-allowed;
+    }
+    .preview-section {
+      margin-top: 16px;
+      text-align: center;
+    }
+    .preview-title {
+      font-weight: 600;
+      margin-bottom: 8px;
+      text-align: left;
+    }
+    .preview-container {
+      max-width: 100%;
+      overflow: auto;
+      background: #e5e5e5;
+      padding: 12px;
+      border-radius: 8px;
+      min-height: 150px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    canvas {
+      display: none;
+    }
+    /* 專門用來在手機顯示與長按儲存的 img 標籤 */
+    #resultImg {
+      max-width: 100%;
+      height: auto;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      background-color: #fff;
+      display: none;
+    }
+    .tip-text {
+      font-size: 0.85rem;
+      color: #86868b;
+      margin-top: 8px;
+      display: none;
+    }
+    .download-btn {
+      margin-top: 12px;
+      background-color: #34c759;
+      text-decoration: none;
+      display: inline-block;
+      text-align: center;
+      line-height: 24px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h1>圖片拼接與自動縮放工具</h1>
+
+  <div class="controls">
+    <div class="control-group">
+      <label for="imageInput">選擇圖片：</label>
+      <input type="file" id="imageInput" accept="image/*" multiple>
+    </div>
+
+    <div class="control-group">
+      <label for="direction">拼接方向：</label>
+      <select id="direction">
+        <option value="horizontal">水平合併 (等高縮放)</option>
+        <option value="vertical">垂直合併 (等寬縮放)</option>
+      </select>
+    </div>
+
+    <button id="mergeBtn" disabled>開始合併</button>
+  </div>
+
+  <div class="preview-section">
+    <div class="preview-title">預覽結果：</div>
+    <div class="preview-container">
+      <canvas id="canvas"></canvas>
+      <img id="resultImg" alt="合併後的圖片">
+      <span id="placeholderText">請上傳兩張以上的圖片</span>
+    </div>
+    <div id="tipText" class="tip-text">💡 小提示：若按鈕無法下載，可直接「長按上方圖片」選取儲存。</div>
+    <button id="downloadBtn" class="download-btn" style="display: none;">儲存 / 下載圖片</button>
+  </div>
+</div>
+
+<script>
+  const imageInput = document.getElementById('imageInput');
+  const directionSelect = document.getElementById('direction');
+  const mergeBtn = document.getElementById('mergeBtn');
+  const downloadBtn = document.getElementById('downloadBtn');
+  const canvas = document.getElementById('canvas');
+  const resultImg = document.getElementById('resultImg');
+  const placeholderText = document.getElementById('placeholderText');
+  const tipText = document.getElementById('tipText');
+  const ctx = canvas.getContext('2d');
+
+  let loadedImages = [];
+
+  imageInput.addEventListener('change', (e) => {
+    const files = Array.from(e.target.files);
+    if (files.length === 0) {
+      mergeBtn.disabled = true;
+      return;
+    }
+
+    loadedImages = [];
+    let loadedCount = 0;
+
+    files.forEach((file) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      
+      img.onload = () => {
+        loadedImages.push(img);
+        loadedCount++;
+        URL.revokeObjectURL(url);
+        
+        if (loadedCount === files.length) {
+          mergeBtn.disabled = false;
+        }
+      };
+
+      img.src = url;
+    });
+  });
+
+  mergeBtn.addEventListener('click', mergeImages);
+
+  function mergeImages() {
+    if (loadedImages.length === 0) return;
+
+    const direction = directionSelect.value;
+
+    if (direction === 'horizontal') {
+      const minHeight = Math.min(...loadedImages.map(img => img.naturalHeight));
+
+      const scaledImages = loadedImages.map(img => {
+        const scale = minHeight / img.naturalHeight;
+        return {
+          img: img,
+          width: img.naturalWidth * scale,
+          height: minHeight
+        };
+      });
+
+      const totalWidth = scaledImages.reduce((sum, item) => sum + item.width, 0);
+
+      canvas.width = totalWidth;
+      canvas.height = minHeight;
+
+      let currentX = 0;
+      scaledImages.forEach(item => {
+        ctx.drawImage(item.img, currentX, 0, item.width, item.height);
+        currentX += item.width;
+      });
+
+    } else {
+      const minWidth = Math.min(...loadedImages.map(img => img.naturalWidth));
+
+      const scaledImages = loadedImages.map(img => {
+        const scale = minWidth / img.naturalWidth;
+        return {
+          img: img,
+          width: minWidth,
+          height: img.naturalHeight * scale
+        };
+      });
+
+      const totalHeight = scaledImages.reduce((sum, item) => sum + item.height, 0);
+
+      canvas.width = minWidth;
+      canvas.height = totalHeight;
+
+      let currentY = 0;
+      scaledImages.forEach(item => {
+        ctx.drawImage(item.img, 0, currentY, item.width, item.height);
+        currentY += item.height;
+      });
+    }
+
+    // 將 Canvas 轉換為圖片 Base64 並賦予 <img> 標籤
+    const dataUrl = canvas.toDataURL('image/png');
+    resultImg.src = dataUrl;
+
+    // 顯示圖片與下載提示
+    placeholderText.style.display = 'none';
+    resultImg.style.display = 'block';
+    tipText.style.display = 'block';
+    downloadBtn.style.display = 'block';
+  }
+
+  // 針對手機處理儲存邏輯
+  downloadBtn.addEventListener('click', () => {
+    const dataUrl = resultImg.src;
+    
+    // 試圖進行標準下載
+    const link = document.createElement('a');
+    link.download = 'merged_image.png';
+    link.href = dataUrl;
+    
+    // 判斷是否在內建瀏覽器（如 LINE/FB），或開啟新頁面供儲存
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    
+    if (isMobile) {
+      // 手機端：開起新視窗/分頁顯示圖檔，方便長按儲存
+      const newWin = window.open();
+      if (newWin) {
+        newWin.document.write(`<img src="${dataUrl}" style="max-width:100%; height:auto;" /><p style="font-size:14px;color:#666;">長按圖片即可儲存至手機</p>`);
+      } else {
+        // 若被阻擋彈出視窗，引導用戶直接長按頁面上輸出的圖片
+        alert('請直接「長按」畫面中央合併好的圖片，選擇「儲存圖片」或「加入照片」！');
+      }
+    } else {
+      // 電腦端標準下載
+      link.click();
+    }
+  });
+</script>
+
+</body>
+</html>

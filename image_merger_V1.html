@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Merge images</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      padding: 24px;
+      background-color: #f5f5f7;
+      color: #333;
+    }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      background: #ffffff;
+      padding: 24px;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    }
+    h1 {
+      font-size: 1.5rem;
+      margin-bottom: 20px;
+      text-align: center;
+      color: #1d1d1f;
+    }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+      padding: 16px;
+      background: #fafafa;
+      border-radius: 8px;
+      border: 1px solid #e5e5e5;
+    }
+    .control-group {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    label {
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+    input[type="file"] {
+      font-size: 0.9rem;
+    }
+    select, button {
+      padding: 8px 16px;
+      font-size: 0.95rem;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      background-color: #fff;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    button {
+      background-color: #0071e3;
+      color: #fff;
+      border: none;
+      font-weight: 500;
+    }
+    button:hover {
+      background-color: #0077ed;
+    }
+    button:disabled {
+      background-color: #a1a1a6;
+      cursor: not-allowed;
+    }
+    .preview-section {
+      margin-top: 20px;
+      text-align: center;
+    }
+    .preview-title {
+      font-weight: 600;
+      margin-bottom: 12px;
+      text-align: left;
+    }
+    .preview-container {
+      max-width: 100%;
+      overflow: auto;
+      background: #e5e5e5;
+      padding: 16px;
+      border-radius: 8px;
+      min-height: 200px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    canvas {
+      max-width: 100%;
+      height: auto;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      background-color: #fff;
+    }
+    .download-btn {
+      margin-top: 16px;
+      background-color: #34c759;
+    }
+    .download-btn:hover {
+      background-color: #30d158;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h1>Merge images</h1>
+
+  <div class="controls">
+    <div class="control-group">
+      <label for="imageInput">選擇圖片：</label>
+      <input type="file" id="imageInput" accept="image/*" multiple>
+    </div>
+
+    <div class="control-group">
+      <label for="direction">拼接方向：</label>
+      <select id="direction">
+        <option value="horizontal">水平合併 (等高縮放)</option>
+        <option value="vertical">垂直合併 (等寬縮放)</option>
+      </select>
+    </div>
+
+    <button id="mergeBtn" disabled>開始合併</button>
+  </div>
+
+  <div class="preview-section">
+    <div class="preview-title">預覽結果：</div>
+    <div class="preview-container">
+      <canvas id="canvas" style="display: none;"></canvas>
+      <span id="placeholderText">請上傳兩張以上的圖片</span>
+    </div>
+    <button id="downloadBtn" class="download-btn" style="display: none;">下載合併圖片</button>
+  </div>
+</div>
+
+<script>
+  const imageInput = document.getElementById('imageInput');
+  const directionSelect = document.getElementById('direction');
+  const mergeBtn = document.getElementById('mergeBtn');
+  const downloadBtn = document.getElementById('downloadBtn');
+  const canvas = document.getElementById('canvas');
+  const placeholderText = document.getElementById('placeholderText');
+  const ctx = canvas.getContext('2d');
+
+  let loadedImages = [];
+
+  imageInput.addEventListener('change', (e) => {
+    const files = Array.from(e.target.files);
+    if (files.length === 0) {
+      mergeBtn.disabled = true;
+      return;
+    }
+
+    loadedImages = [];
+    let loadedCount = 0;
+
+    files.forEach((file) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      
+      img.onload = () => {
+        loadedImages.push(img);
+        loadedCount++;
+        URL.revokeObjectURL(url);
+        
+        if (loadedCount === files.length) {
+          mergeBtn.disabled = false;
+        }
+      };
+
+      img.src = url;
+    });
+  });
+
+  mergeBtn.addEventListener('click', mergeImages);
+
+  function mergeImages() {
+    if (loadedImages.length === 0) return;
+
+    const direction = directionSelect.value;
+
+    if (direction === 'horizontal') {
+      // 水平合併：找出最小高度，將所有圖片依比例縮放到該高度
+      const minHeight = Math.min(...loadedImages.map(img => img.naturalHeight));
+
+      const scaledImages = loadedImages.map(img => {
+        const scale = minHeight / img.naturalHeight;
+        return {
+          img: img,
+          width: img.naturalWidth * scale,
+          height: minHeight
+        };
+      });
+
+      const totalWidth = scaledImages.reduce((sum, item) => sum + item.width, 0);
+
+      canvas.width = totalWidth;
+      canvas.height = minHeight;
+
+      let currentX = 0;
+      scaledImages.forEach(item => {
+        ctx.drawImage(item.img, currentX, 0, item.width, item.height);
+        currentX += item.width;
+      });
+
+    } else {
+      // 垂直合併：找出最小寬度，將所有圖片依比例縮放到該寬度
+      const minWidth = Math.min(...loadedImages.map(img => img.naturalWidth));
+
+      const scaledImages = loadedImages.map(img => {
+        const scale = minWidth / img.naturalWidth;
+        return {
+          img: img,
+          width: minWidth,
+          height: img.naturalHeight * scale
+        };
+      });
+
+      const totalHeight = scaledImages.reduce((sum, item) => sum + item.height, 0);
+
+      canvas.width = minWidth;
+      canvas.height = totalHeight;
+
+      let currentY = 0;
+      scaledImages.forEach(item => {
+        ctx.drawImage(item.img, 0, currentY, item.width, item.height);
+        currentY += item.height;
+      });
+    }
+
+    // 顯示繪製結果與下載按鈕
+    placeholderText.style.display = 'none';
+    canvas.style.display = 'block';
+    downloadBtn.style.display = 'inline-block';
+  }
+
+  downloadBtn.addEventListener('click', () => {
+    const link = document.createElement('a');
+    link.download = 'merged_image.png';
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  });
+</script>
+
+</body>
+</html>
