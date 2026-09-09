@@ -126,6 +126,15 @@
     </div>
 
     <div class="control-group">
+      <label for="sortOrder">圖片順序：</label>
+      <select id="sortOrder">
+        <option value="original">依選擇順序 (點擊/選取順序)</option>
+        <option value="name-asc">檔名 (升冪 A-Z / 1-9)</option>
+        <option value="name-desc">檔名 (降冪 Z-A / 9-1)</option>
+      </select>
+    </div>
+
+    <div class="control-group">
       <label for="direction">拼接方向：</label>
       <select id="direction">
         <option value="horizontal">水平合併 (等高縮放)</option>
@@ -150,6 +159,7 @@
 
 <script>
   const imageInput = document.getElementById('imageInput');
+  const sortOrderSelect = document.getElementById('sortOrder');
   const directionSelect = document.getElementById('direction');
   const mergeBtn = document.getElementById('mergeBtn');
   const downloadBtn = document.getElementById('downloadBtn');
@@ -159,7 +169,7 @@
   const tipText = document.getElementById('tipText');
   const ctx = canvas.getContext('2d');
 
-  let loadedImages = [];
+  let loadedImageData = []; // 儲存包含 Image 物件與原檔名的資料結構
   let currentBlob = null;
 
   // 判斷是否為行動裝置 (iPhone / iPad / Android)
@@ -175,15 +185,21 @@
       return;
     }
 
-    loadedImages = [];
+    loadedImageData = [];
     let loadedCount = 0;
 
-    files.forEach((file) => {
+    // 按使用者選取的順序讀取檔名與圖片
+    files.forEach((file, index) => {
       const img = new Image();
       const url = URL.createObjectURL(file);
       
       img.onload = () => {
-        loadedImages.push(img);
+        // 保存選擇時的自然索引 index，避免非同步載入完成順序錯亂
+        loadedImageData[index] = {
+          img: img,
+          fileName: file.name,
+          originalIndex: index
+        };
         loadedCount++;
         URL.revokeObjectURL(url);
         
@@ -199,14 +215,33 @@
   mergeBtn.addEventListener('click', mergeImages);
 
   function mergeImages() {
-    if (loadedImages.length === 0) return;
+    if (loadedImageData.length === 0) return;
+
+    // 複製一份陣列進行排序，避免修改原始讀取資料
+    let sortedData = [...loadedImageData];
+    const sortOrder = sortOrderSelect.value;
+
+    // 排序邏輯
+    if (sortOrder === 'name-asc') {
+      // 檔名升冪 A-Z / 1-9 (自然排序演算法)
+      sortedData.sort((a, b) => a.fileName.localeCompare(b.fileName, undefined, { numeric: true, sensitivity: 'base' }));
+    } else if (sortOrder === 'name-desc') {
+      // 檔名降冪 Z-A / 9-1
+      sortedData.sort((a, b) => b.fileName.localeCompare(a.fileName, undefined, { numeric: true, sensitivity: 'base' }));
+    } else {
+      // 依選取順序 (按 originalIndex 排序)
+      sortedData.sort((a, b) => a.originalIndex - b.originalIndex);
+    }
+
+    // 提取排序後的圖片物件
+    const imagesToMerge = sortedData.map(item => item.img);
 
     const direction = directionSelect.value;
 
     if (direction === 'horizontal') {
-      const minHeight = Math.min(...loadedImages.map(img => img.naturalHeight));
+      const minHeight = Math.min(...imagesToMerge.map(img => img.naturalHeight));
 
-      const scaledImages = loadedImages.map(img => {
+      const scaledImages = imagesToMerge.map(img => {
         const scale = minHeight / img.naturalHeight;
         return {
           img: img,
@@ -227,9 +262,9 @@
       });
 
     } else {
-      const minWidth = Math.min(...loadedImages.map(img => img.naturalWidth));
+      const minWidth = Math.min(...imagesToMerge.map(img => img.naturalWidth));
 
-      const scaledImages = loadedImages.map(img => {
+      const scaledImages = imagesToMerge.map(img => {
         const scale = minWidth / img.naturalWidth;
         return {
           img: img,
@@ -301,7 +336,6 @@
           }
         }
       } else {
-        // 若手機瀏覽器不支援 Web Share API，備援打開圖片 Object URL
         const objectURL = URL.createObjectURL(currentBlob);
         window.open(objectURL, '_blank');
       }
